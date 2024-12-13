@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Survival Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <p>Time Left: <span id="timer">7:00</span></p>
+        <p>Landmines: <span id="landmines">3</span></p>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Basic setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 1);
+        scene.add(ambientLight);
+
+        const flashlight = new THREE.SpotLight(0xffffff, 1, 100, Math.PI / 6, 0.5);
+        flashlight.position.set(0, 5, 0);
+        flashlight.target = camera;
+        flashlight.castShadow = true;
+        scene.add(flashlight);
+        
+        // Timer setup
+        let timeRemaining = 7 * 60; // 7 minutes in seconds
+        const timerElement = document.getElementById('timer');
+
+        function updateTimer() {
+            const minutes = Math.floor(timeRemaining / 60);
+            const seconds = timeRemaining % 60;
+            timerElement.textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        }
+
+        // Maze dimensions
+        const mazeSize = 20;
+        const wallSize = 5;
+        const maze = Array.from({ length: mazeSize }, () =>
+            Array.from({ length: mazeSize }, () => (Math.random() > 0.7 ? 1 : 0))
+        );
+
+        // Player setup
+        const player = new THREE.Object3D();
+        player.position.set(wallSize / 2, 1, wallSize / 2);
+        scene.add(player);
+        camera.position.set(0, 1.6, 0);
+        player.add(camera);
+
+        // Generate maze walls
+        const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        const weakWallMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+
+        for (let z = 0; z < mazeSize; z++) {
+            for (let x = 0; x < mazeSize; x++) {
+                if (maze[z][x] === 1) {
+                    const wallGeometry = new THREE.BoxGeometry(wallSize, wallSize, wallSize);
+                    const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    wall.position.set(x * wallSize, wallSize / 2, z * wallSize);
+                    scene.add(wall);
+                }
+            }
+        }
+
+        // AI setup
+        const ai = new THREE.Mesh(
+            new THREE.BoxGeometry(wallSize / 2, wallSize / 2, wallSize / 2),
+            new THREE.MeshPhongMaterial({ color: 0x0000ff })
+        );
+        ai.position.set(wallSize * (mazeSize - 1), 1, wallSize * (mazeSize - 1));
+        scene.add(ai);
+
+        // AI behavior
+        function moveAI() {
+            const direction = new THREE.Vector3();
+            direction.subVectors(player.position, ai.position).normalize();
+            ai.position.add(direction.multiplyScalar(0.05)); // AI speed
+        }
+
+        // Player controls
+        const keys = {};
+        document.addEventListener('keydown', (event) => (keys[event.key] = true));
+        document.addEventListener('keyup', (event) => (keys[event.key] = false));
+
+        function movePlayer() {
+            const speed = 0.1;
+            if (keys['w']) player.position.z -= speed;
+            if (keys['s']) player.position.z += speed;
+            if (keys['a']) player.position.x -= speed;
+            if (keys['d']) player.position.x += speed;
+        }
+
+        // Landmine logic
+        let landmines = 3;
+        const landmineElement = document.getElementById('landmines');
+        const landmineObjects = [];
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'l' && landmines > 0) {
+                const mine = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.5, 16, 16),
+                    new THREE.MeshPhongMaterial({ color: 0xffff00 })
+                );
+                mine.position.copy(player.position);
+                landmineObjects.push(mine);
+                scene.add(mine);
+                landmines--;
+                landmineElement.textContent = landmines;
+            }
+        });
+
+        function checkLandmines() {
+            landmineObjects.forEach((mine, index) => {
+                if (ai.position.distanceTo(mine.position) < 1) {
+                    landmineObjects.splice(index, 1);
+                    scene.remove(mine);
+                    ai.position.add(new THREE.Vector3(2, 0, 2)); // Push AI back temporarily
+                }
+            });
+        }
+
+        // Game loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (timeRemaining > 0) {
+                movePlayer();
+                moveAI();
+                checkLandmines();
+                flashlight.position.copy(camera.position);
+                updateTimer();
+                timeRemaining -= 1 / 60; // Decrease timer
+            } else {
+                alert('You survived! Humans win!');
+                return;
+            }
+
+            if (player.position.distanceTo(ai.position) < 1) {
+                alert('You were caught! AI wins!');
+                return;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
